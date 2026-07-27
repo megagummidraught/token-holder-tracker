@@ -39,12 +39,12 @@ interface HeliusTx {
 async function fetchJupPrices(mints: string[]): Promise<Record<string, number>> {
   const ids = Array.from(new Set(mints)).join(",");
   try {
-    const res = await fetch(`https://api.jup.ag/price/v2?ids=${ids}`);
+    const res = await fetch(`https://lite-api.jup.ag/price/v3?ids=${ids}`);
     if (!res.ok) return {};
-    const j = (await res.json()) as { data?: Record<string, { price?: string } | null> };
+    const j = (await res.json()) as Record<string, { usdPrice?: number } | null>;
     const out: Record<string, number> = {};
-    for (const [k, v] of Object.entries(j.data ?? {})) {
-      const p = v?.price ? parseFloat(v.price) : 0;
+    for (const [k, v] of Object.entries(j)) {
+      const p = v?.usdPrice ?? 0;
       if (p > 0) out[k] = p;
     }
     return out;
@@ -52,6 +52,7 @@ async function fetchJupPrices(mints: string[]): Promise<Record<string, number>> 
     return {};
   }
 }
+
 
 async function fetchSwapPage(
   mint: string,
