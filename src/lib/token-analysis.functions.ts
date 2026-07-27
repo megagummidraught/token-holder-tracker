@@ -160,8 +160,8 @@ export const analyzeToken = createServerFn({ method: "POST" })
     let reachedEnd = false;
 
     for (let page = 0; page < MAX_PAGES; page++) {
-      const txs = await fetchSwapPage(mint, apiKey, before);
-      if (txs.length === 0) {
+      const { txs, nextBefore } = await fetchSwapPage(mint, apiKey, before);
+      if (txs.length === 0 && !nextBefore) {
         reachedEnd = true;
         break;
       }
@@ -212,9 +212,12 @@ export const analyzeToken = createServerFn({ method: "POST" })
         rec.u7 += usdPaid;
         buyerBuys.set(buyer, rec);
       }
-      const last = txs[txs.length - 1];
-      before = last.signature;
-      if (last.timestamp < cutoff) {
+      before = nextBefore;
+      if (!before) {
+        reachedEnd = true;
+        break;
+      }
+      if (txs.length > 0 && txs[txs.length - 1].timestamp < cutoff) {
         reachedEnd = true;
         break;
       }
