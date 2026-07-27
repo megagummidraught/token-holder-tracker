@@ -44,6 +44,9 @@ function gradeColor(g: string) {
   if (g === "C") return "bg-yellow-500/20 text-yellow-500";
   if (g === "D") return "bg-orange-500/20 text-orange-500";
   return "bg-destructive/20 text-destructive";
+}
+
+
 
 function Index() {
   const [mint, setMint] = useState("");
