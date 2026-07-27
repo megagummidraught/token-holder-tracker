@@ -38,6 +38,13 @@ function fmtUsd(n: number) {
   });
 }
 
+function gradeColor(g: string) {
+  if (g === "A+" || g === "A") return "bg-emerald-500/20 text-emerald-500";
+  if (g === "B") return "bg-lime-500/20 text-lime-500";
+  if (g === "C") return "bg-yellow-500/20 text-yellow-500";
+  if (g === "D") return "bg-orange-500/20 text-orange-500";
+  return "bg-destructive/20 text-destructive";
+
 function Index() {
   const [mint, setMint] = useState("");
   const analyze = useServerFn(analyzeToken);
