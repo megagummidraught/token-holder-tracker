@@ -102,6 +102,8 @@ async function getCurrentBalance(
   return total;
 }
 
+export type Grade = "A+" | "A" | "B" | "C" | "D" | "F";
+
 export interface AnalysisResult {
   mint: string;
   tokenPriceUsd: number;
@@ -109,6 +111,10 @@ export interface AnalysisResult {
   scannedTransactions: number;
   oldestScannedTimestamp: number | null;
   reachedWindowEnd: boolean;
+  excludedLpLike: number;
+  grade: Grade;
+  gradeScore: number;
+  gradeReason: string;
   buckets: Record<Bucket, {
     qualifyingBuyers: number;
     stillHolding: number;
