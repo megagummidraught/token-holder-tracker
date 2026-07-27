@@ -38,6 +38,16 @@ function fmtUsd(n: number) {
   });
 }
 
+function gradeColor(g: string) {
+  if (g === "A+" || g === "A") return "bg-emerald-500/20 text-emerald-500";
+  if (g === "B") return "bg-lime-500/20 text-lime-500";
+  if (g === "C") return "bg-yellow-500/20 text-yellow-500";
+  if (g === "D") return "bg-orange-500/20 text-orange-500";
+  return "bg-destructive/20 text-destructive";
+}
+
+
+
 function Index() {
   const [mint, setMint] = useState("");
   const analyze = useServerFn(analyzeToken);
@@ -97,15 +107,21 @@ function Index() {
 
         {result && (
           <div className="mt-8 space-y-6">
-            <div className="rounded-md border border-border bg-card p-4 text-sm text-card-foreground">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded-md border border-border bg-card p-4 text-card-foreground">
+              <div className="flex items-center gap-4">
+                <div className={`flex h-16 w-16 items-center justify-center rounded-md text-2xl font-bold ${gradeColor(result.grade)}`}>
+                  {result.grade}
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-medium">Sticky-buyer score: {result.gradeScore}/100</div>
+                  <div className="text-xs text-muted-foreground">{result.gradeReason}</div>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
                 <Info label="Token price" value={`$${result.tokenPriceUsd.toPrecision(4)}`} />
                 <Info label="SOL price" value={fmtUsd(result.solPriceUsd)} />
                 <Info label="Swaps scanned" value={result.scannedTransactions.toString()} />
-                <Info
-                  label="Coverage"
-                  value={result.reachedWindowEnd ? "Full 7d window" : "Partial (capped)"}
-                />
+                <Info label="LP-like excluded" value={result.excludedLpLike.toString()} />
               </div>
               {!result.reachedWindowEnd && (
                 <p className="mt-3 text-xs text-muted-foreground">

@@ -102,6 +102,8 @@ async function getCurrentBalance(
   return total;
 }
 
+export type Grade = "A+" | "A" | "B" | "C" | "D" | "F";
+
 export interface AnalysisResult {
   mint: string;
   tokenPriceUsd: number;
@@ -109,6 +111,10 @@ export interface AnalysisResult {
   scannedTransactions: number;
   oldestScannedTimestamp: number | null;
   reachedWindowEnd: boolean;
+  excludedLpLike: number;
+  grade: Grade;
+  gradeScore: number;
+  gradeReason: string;
   buckets: Record<Bucket, {
     qualifyingBuyers: number;
     stillHolding: number;
@@ -137,6 +143,8 @@ export const analyzeToken = createServerFn({ method: "POST" })
     // Accumulate first-buy events per (bucket, buyer): sum usd bought within window
     // buyerBuys[address] = { firstTs, totalUsdIn7d, totalUsdIn2d, totalUsdIn1d }
     const buyerBuys = new Map<string, { u1: number; u2: number; u7: number }>();
+    // Track sells per address to detect LP / market-maker churn
+    const sellerSells = new Map<string, { usd: number; count: number }>();
 
     let before: string | undefined;
     let scanned = 0;
@@ -156,16 +164,28 @@ export const analyzeToken = createServerFn({ method: "POST" })
           reachedEnd = true;
           continue;
         }
-        // Identify buyer: account that received the target mint
-        const receives = (tx.tokenTransfers ?? []).filter(
-          (t) => t.mint === mint && t.toUserAccount && t.tokenAmount > 0,
-        );
+        const mintTransfers = (tx.tokenTransfers ?? []).filter((t) => t.mint === mint && t.tokenAmount > 0);
+        if (mintTransfers.length === 0) continue;
+
+        // Buyer = largest receiver of target mint
+        const receives = mintTransfers.filter((t) => t.toUserAccount);
+        // Seller = largest sender of target mint
+        const sends = mintTransfers.filter((t) => t.fromUserAccount);
+
+        if (sends.length > 0) {
+          sends.sort((a, b) => b.tokenAmount - a.tokenAmount);
+          const seller = sends[0].fromUserAccount!;
+          const usdSold = sends[0].tokenAmount * tokenPrice;
+          const s = sellerSells.get(seller) ?? { usd: 0, count: 0 };
+          s.usd += usdSold;
+          s.count += 1;
+          sellerSells.set(seller, s);
+        }
+
         if (receives.length === 0) continue;
-        // Use largest receiver as buyer
         receives.sort((a, b) => b.tokenAmount - a.tokenAmount);
         const buyer = receives[0].toUserAccount!;
 
-        // USD paid = SOL sent by buyer * solPrice + USDC/USDT sent by buyer
         let usdPaid = 0;
         for (const n of tx.nativeTransfers ?? []) {
           if (n.fromUserAccount === buyer) usdPaid += (n.amount / 1e9) * solPrice;
@@ -181,7 +201,7 @@ export const analyzeToken = createServerFn({ method: "POST" })
         const age = now - tx.timestamp;
         if (age <= WINDOWS["1d"]) rec.u1 += usdPaid;
         if (age <= WINDOWS["2d"]) rec.u2 += usdPaid;
-        rec.u7 += usdPaid; // within 7d because of cutoff
+        rec.u7 += usdPaid;
         buyerBuys.set(buyer, rec);
       }
       const last = txs[txs.length - 1];
@@ -192,7 +212,27 @@ export const analyzeToken = createServerFn({ method: "POST" })
       }
     }
 
-    // Aggregate qualifying buyers per bucket (usd >= 100 in that window)
+    // LP / market-maker heuristic: sold 3+ times OR sold >= 50% of what they bought
+    function isLpLike(addr: string): boolean {
+      const s = sellerSells.get(addr);
+      if (!s) return false;
+      if (s.count >= 3) return true;
+      const bought = buyerBuys.get(addr);
+      const boughtUsd = bought?.u7 ?? 0;
+      if (boughtUsd > 0 && s.usd >= boughtUsd * 0.5) return true;
+      // Pure sellers with huge volume are almost certainly pools
+      if (!bought && s.usd >= 10_000) return true;
+      return false;
+    }
+
+    let excludedLpLike = 0;
+    for (const addr of Array.from(buyerBuys.keys())) {
+      if (isLpLike(addr)) {
+        buyerBuys.delete(addr);
+        excludedLpLike++;
+      }
+    }
+
     const qual: Record<Bucket, string[]> = { "1d": [], "2d": [], "7d": [] };
     for (const [addr, r] of buyerBuys.entries()) {
       if (r.u1 >= MIN_USD) qual["1d"].push(addr);
@@ -200,13 +240,11 @@ export const analyzeToken = createServerFn({ method: "POST" })
       if (r.u7 >= MIN_USD) qual["7d"].push(addr);
     }
 
-    // Union of all buyers to check current holdings (cap for cost/perf)
     const uniqueBuyers = Array.from(
       new Set([...qual["1d"], ...qual["2d"], ...qual["7d"]]),
     ).slice(0, MAX_HOLDERS_TO_CHECK);
 
     const balanceUsd = new Map<string, number>();
-    // Limit concurrency
     const CONCURRENCY = 8;
     let idx = 0;
     async function worker() {
@@ -244,6 +282,23 @@ export const analyzeToken = createServerFn({ method: "POST" })
       };
     }
 
+    const b1 = build("1d");
+    const b2 = build("2d");
+    const b7 = build("7d");
+
+    // Grade = retention (holders / qualifying) weighted by log volume of holders
+    const retention = b7.qualifyingBuyers > 0 ? b7.stillHolding / b7.qualifyingBuyers : 0;
+    const volScore = Math.min(1, Math.log10(1 + b7.stillHolding) / 2); // 100 holders => 1.0
+    const score = Math.round((retention * 0.65 + volScore * 0.35) * 100);
+    let grade: Grade;
+    if (score >= 85) grade = "A+";
+    else if (score >= 70) grade = "A";
+    else if (score >= 55) grade = "B";
+    else if (score >= 40) grade = "C";
+    else if (score >= 25) grade = "D";
+    else grade = "F";
+    const gradeReason = `${b7.stillHolding}/${b7.qualifyingBuyers} 7d buyers still hold $100+ (${Math.round(retention * 100)}% retention)`;
+
     return {
       mint,
       tokenPriceUsd: tokenPrice,
@@ -251,10 +306,10 @@ export const analyzeToken = createServerFn({ method: "POST" })
       scannedTransactions: scanned,
       oldestScannedTimestamp: oldestTs,
       reachedWindowEnd: reachedEnd,
-      buckets: {
-        "1d": build("1d"),
-        "2d": build("2d"),
-        "7d": build("7d"),
-      },
+      excludedLpLike,
+      grade,
+      gradeScore: score,
+      gradeReason,
+      buckets: { "1d": b1, "2d": b2, "7d": b7 },
     };
   });
