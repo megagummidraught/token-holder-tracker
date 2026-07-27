@@ -118,9 +118,11 @@ export interface AnalysisResult {
 export const analyzeToken = createServerFn({ method: "POST" })
   .inputValidator((input) => InputSchema.parse(input))
   .handler(async ({ data }): Promise<AnalysisResult> => {
-    const apiKey: string | undefined = process.env.HELIUS_API_KEY;
-    if (!apiKey) throw new Error("HELIUS_API_KEY not configured");
+    const apiKeyEnv = process.env.HELIUS_API_KEY;
+    if (!apiKeyEnv) throw new Error("HELIUS_API_KEY not configured");
+    const apiKey: string = apiKeyEnv;
     const mint = data.mint;
+
 
     const prices = await fetchJupPrices([mint, WSOL]);
     const tokenPrice = prices[mint] ?? 0;
