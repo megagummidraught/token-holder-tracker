@@ -58,18 +58,26 @@ async function fetchSwapPage(
   mint: string,
   apiKey: string,
   before?: string,
-): Promise<HeliusTx[]> {
+): Promise<{ txs: HeliusTx[]; nextBefore?: string }> {
   const url = new URL(`https://api.helius.xyz/v0/addresses/${mint}/transactions`);
   url.searchParams.set("api-key", apiKey);
   url.searchParams.set("type", "SWAP");
   url.searchParams.set("limit", "100");
   if (before) url.searchParams.set("before", before);
   const res = await fetch(url.toString());
+  if (res.status === 404) {
+    // Helius returns 404 when this window has no parsed events, often with a
+    // hint to continue via before-signature. Follow it so paging continues.
+    const body = await res.text();
+    const m = body.match(/before-signature[^A-Za-z0-9]+([1-9A-HJ-NP-Za-km-z]{32,})/);
+    return { txs: [], nextBefore: m?.[1] };
+  }
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Helius tx fetch failed [${res.status}]: ${body.slice(0, 200)}`);
   }
-  return (await res.json()) as HeliusTx[];
+  const txs = (await res.json()) as HeliusTx[];
+  return { txs, nextBefore: txs.length ? txs[txs.length - 1].signature : undefined };
 }
 
 async function getCurrentBalance(
@@ -152,8 +160,8 @@ export const analyzeToken = createServerFn({ method: "POST" })
     let reachedEnd = false;
 
     for (let page = 0; page < MAX_PAGES; page++) {
-      const txs = await fetchSwapPage(mint, apiKey, before);
-      if (txs.length === 0) {
+      const { txs, nextBefore } = await fetchSwapPage(mint, apiKey, before);
+      if (txs.length === 0 && !nextBefore) {
         reachedEnd = true;
         break;
       }
@@ -204,9 +212,12 @@ export const analyzeToken = createServerFn({ method: "POST" })
         rec.u7 += usdPaid;
         buyerBuys.set(buyer, rec);
       }
-      const last = txs[txs.length - 1];
-      before = last.signature;
-      if (last.timestamp < cutoff) {
+      before = nextBefore;
+      if (!before) {
+        reachedEnd = true;
+        break;
+      }
+      if (txs.length > 0 && txs[txs.length - 1].timestamp < cutoff) {
         reachedEnd = true;
         break;
       }
