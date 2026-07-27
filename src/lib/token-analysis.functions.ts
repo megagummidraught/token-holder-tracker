@@ -58,18 +58,26 @@ async function fetchSwapPage(
   mint: string,
   apiKey: string,
   before?: string,
-): Promise<HeliusTx[]> {
+): Promise<{ txs: HeliusTx[]; nextBefore?: string }> {
   const url = new URL(`https://api.helius.xyz/v0/addresses/${mint}/transactions`);
   url.searchParams.set("api-key", apiKey);
   url.searchParams.set("type", "SWAP");
   url.searchParams.set("limit", "100");
   if (before) url.searchParams.set("before", before);
   const res = await fetch(url.toString());
+  if (res.status === 404) {
+    // Helius returns 404 when this window has no parsed events, often with a
+    // hint to continue via before-signature. Follow it so paging continues.
+    const body = await res.text();
+    const m = body.match(/before-signature[^A-Za-z0-9]+([1-9A-HJ-NP-Za-km-z]{32,})/);
+    return { txs: [], nextBefore: m?.[1] };
+  }
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Helius tx fetch failed [${res.status}]: ${body.slice(0, 200)}`);
   }
-  return (await res.json()) as HeliusTx[];
+  const txs = (await res.json()) as HeliusTx[];
+  return { txs, nextBefore: txs.length ? txs[txs.length - 1].signature : undefined };
 }
 
 async function getCurrentBalance(
