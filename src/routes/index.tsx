@@ -68,6 +68,19 @@ function Index() {
             For a token mint, counts buyers who spent &gt; $100 in the window and
             still hold &gt; $100 today. Powered by Helius + Jupiter.
           </p>
+          <p className="mt-3 text-sm">
+            📱 Also on Telegram:{" "}
+            <a
+              className="font-medium text-primary hover:underline"
+              href="https://t.me/AlphaCarrd_bot"
+              target="_blank"
+              rel="noreferrer"
+            >
+              @AlphaCarrd_bot
+            </a>{" "}
+            — DM a mint and get the full report (token info + DexScreener +
+            sticky buyers + whale pressure).
+          </p>
         </header>
 
         <form
