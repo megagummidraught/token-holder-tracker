@@ -166,110 +166,113 @@ async function scanWallet(
   return flows;
 }
 
-export const analyzeWhalePressure = createServerFn({ method: "POST" })
-  .inputValidator((input) => InputSchema.parse(input))
-  .handler(async ({ data }): Promise<WhalePressureResult> => {
-    const key = process.env.HELIUS_API_KEY;
-    if (!key) throw new Error("HELIUS_API_KEY not configured");
-    const mint = data.mint;
+export async function analyzeWhalePressureImpl(
+  mint: string,
+  topN: number,
+): Promise<WhalePressureResult> {
+  const key = process.env.HELIUS_API_KEY;
+  if (!key) throw new Error("HELIUS_API_KEY not configured");
 
-    const [supply, largest] = await Promise.all([
-      getTokenSupply(key, mint),
-      getLargestAccounts(key, mint),
-    ]);
-    if (supply <= 0) throw new Error("Could not fetch token supply");
-    if (largest.length === 0) throw new Error("No holder data returned");
+  const [supply, largest] = await Promise.all([
+    getTokenSupply(key, mint),
+    getLargestAccounts(key, mint),
+  ]);
+  if (supply <= 0) throw new Error("Could not fetch token supply");
+  if (largest.length === 0) throw new Error("No holder data returned");
 
-    // Resolve owners
-    const holders: Array<{ owner: string; balance: number; pctSupply: number }> = [];
-    let skippedExchange = 0;
+  const holders: Array<{ owner: string; balance: number; pctSupply: number }> = [];
+  let skippedExchange = 0;
 
-    const owners = await Promise.all(
-      largest.slice(0, data.topN).map(async (h) => {
-        const owner = await getOwner(key, h.address);
-        return owner ? { owner, balance: h.uiAmount, pct: (h.uiAmount / supply) * 100 } : null;
-      }),
-    );
-    for (const o of owners) {
-      if (!o) continue;
-      if (EXCHANGE_WALLETS.has(o.owner)) { skippedExchange++; continue; }
-      holders.push({ owner: o.owner, balance: o.balance, pctSupply: o.pct });
-    }
-    if (holders.length === 0) {
-      return {
-        mint,
-        scannedWallets: 0,
-        skippedExchange,
-        windows: {
-          "1d": { aggregateScore: 0, label: scoreLabel(0), buying: 0, selling: 0, neutral: 0 },
-          "2d": { aggregateScore: 0, label: scoreLabel(0), buying: 0, selling: 0, neutral: 0 },
-          "7d": { aggregateScore: 0, label: scoreLabel(0), buying: 0, selling: 0, neutral: 0 },
-        },
-        wallets: [],
-      };
-    }
-
-    const now = Math.floor(Date.now() / 1000);
-    const walletFlows: Record<string, Array<{ delta: number; ts: number }>> = {};
-
-    let widx = 0;
-    async function wworker() {
-      while (widx < holders.length) {
-        const i = widx++;
-        const h = holders[i];
-        try {
-          walletFlows[h.owner] = await scanWallet(key!, h.owner, mint, now);
-        } catch {
-          walletFlows[h.owner] = [];
-        }
-      }
-    }
-    await Promise.all(Array.from({ length: WALLET_CONCURRENCY }, wworker));
-
-    const walletResults = holders.map((h) => {
-      const flows = walletFlows[h.owner] ?? [];
-      const perWindow = {} as WhalePressureResult["wallets"][number]["perWindow"];
-      for (const w of ["1d", "2d", "7d"] as WhaleBucket[]) {
-        const cutoff = now - WINDOWS[w];
-        const rel = flows.filter((f) => f.ts >= cutoff);
-        const bought = rel.filter((f) => f.delta > 0).reduce((a, f) => a + f.delta, 0);
-        const sold = rel.filter((f) => f.delta < 0).reduce((a, f) => a + Math.abs(f.delta), 0);
-        const buyTxs = rel.filter((f) => f.delta > 0).length;
-        const sellTxs = rel.filter((f) => f.delta < 0).length;
-        perWindow[w] = {
-          bought: Math.round(bought * 100) / 100,
-          sold: Math.round(sold * 100) / 100,
-          net: Math.round((bought - sold) * 100) / 100,
-          buyTxs,
-          sellTxs,
-          score: convictionScore(bought, sold, buyTxs, sellTxs),
-        };
-      }
-      return { address: h.owner, pctSupply: Math.round(h.pctSupply * 10000) / 10000, perWindow };
-    });
-
-    const windows = {} as WhalePressureResult["windows"];
-    for (const w of ["1d", "2d", "7d"] as WhaleBucket[]) {
-      const scores = walletResults.map((r) => r.perWindow[w].score);
-      const agg = scores.length
-        ? Math.round((scores.reduce((a, s) => a + s, 0) / scores.length) * 10) / 10
-        : 0;
-      const buying = walletResults.filter((r) => r.perWindow[w].net > 0).length;
-      const selling = walletResults.filter((r) => r.perWindow[w].net < 0).length;
-      windows[w] = {
-        aggregateScore: agg,
-        label: scoreLabel(agg),
-        buying,
-        selling,
-        neutral: walletResults.length - buying - selling,
-      };
-    }
-
+  const owners = await Promise.all(
+    largest.slice(0, topN).map(async (h) => {
+      const owner = await getOwner(key, h.address);
+      return owner ? { owner, balance: h.uiAmount, pct: (h.uiAmount / supply) * 100 } : null;
+    }),
+  );
+  for (const o of owners) {
+    if (!o) continue;
+    if (EXCHANGE_WALLETS.has(o.owner)) { skippedExchange++; continue; }
+    holders.push({ owner: o.owner, balance: o.balance, pctSupply: o.pct });
+  }
+  if (holders.length === 0) {
     return {
       mint,
-      scannedWallets: holders.length,
+      scannedWallets: 0,
       skippedExchange,
-      windows,
-      wallets: walletResults,
+      windows: {
+        "1d": { aggregateScore: 0, label: scoreLabel(0), buying: 0, selling: 0, neutral: 0 },
+        "2d": { aggregateScore: 0, label: scoreLabel(0), buying: 0, selling: 0, neutral: 0 },
+        "7d": { aggregateScore: 0, label: scoreLabel(0), buying: 0, selling: 0, neutral: 0 },
+      },
+      wallets: [],
     };
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const walletFlows: Record<string, Array<{ delta: number; ts: number }>> = {};
+
+  let widx = 0;
+  async function wworker() {
+    while (widx < holders.length) {
+      const i = widx++;
+      const h = holders[i];
+      try {
+        walletFlows[h.owner] = await scanWallet(key!, h.owner, mint, now);
+      } catch {
+        walletFlows[h.owner] = [];
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: WALLET_CONCURRENCY }, wworker));
+
+  const walletResults = holders.map((h) => {
+    const flows = walletFlows[h.owner] ?? [];
+    const perWindow = {} as WhalePressureResult["wallets"][number]["perWindow"];
+    for (const w of ["1d", "2d", "7d"] as WhaleBucket[]) {
+      const cutoff = now - WINDOWS[w];
+      const rel = flows.filter((f) => f.ts >= cutoff);
+      const bought = rel.filter((f) => f.delta > 0).reduce((a, f) => a + f.delta, 0);
+      const sold = rel.filter((f) => f.delta < 0).reduce((a, f) => a + Math.abs(f.delta), 0);
+      const buyTxs = rel.filter((f) => f.delta > 0).length;
+      const sellTxs = rel.filter((f) => f.delta < 0).length;
+      perWindow[w] = {
+        bought: Math.round(bought * 100) / 100,
+        sold: Math.round(sold * 100) / 100,
+        net: Math.round((bought - sold) * 100) / 100,
+        buyTxs,
+        sellTxs,
+        score: convictionScore(bought, sold, buyTxs, sellTxs),
+      };
+    }
+    return { address: h.owner, pctSupply: Math.round(h.pctSupply * 10000) / 10000, perWindow };
   });
+
+  const windows = {} as WhalePressureResult["windows"];
+  for (const w of ["1d", "2d", "7d"] as WhaleBucket[]) {
+    const scores = walletResults.map((r) => r.perWindow[w].score);
+    const agg = scores.length
+      ? Math.round((scores.reduce((a, s) => a + s, 0) / scores.length) * 10) / 10
+      : 0;
+    const buying = walletResults.filter((r) => r.perWindow[w].net > 0).length;
+    const selling = walletResults.filter((r) => r.perWindow[w].net < 0).length;
+    windows[w] = {
+      aggregateScore: agg,
+      label: scoreLabel(agg),
+      buying,
+      selling,
+      neutral: walletResults.length - buying - selling,
+    };
+  }
+
+  return {
+    mint,
+    scannedWallets: holders.length,
+    skippedExchange,
+    windows,
+    wallets: walletResults,
+  };
+}
+
+export const analyzeWhalePressure = createServerFn({ method: "POST" })
+  .inputValidator((input) => InputSchema.parse(input))
+  .handler(async ({ data }) => analyzeWhalePressureImpl(data.mint, data.topN));
