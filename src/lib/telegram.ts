@@ -1,5 +1,5 @@
 import type { AnalysisResult } from "@/lib/token-analysis.functions";
-import type { WhalePressureResult, WhaleBucket } from "@/lib/whale-pressure.functions";
+import type { WhalePressureResult, WhaleBucket } from "@/lib/whale-pressure.server";
 import type { TokenInfo } from "@/lib/token-info.functions";
 
 const GATEWAY = "https://connector-gateway.lovable.dev/telegram";

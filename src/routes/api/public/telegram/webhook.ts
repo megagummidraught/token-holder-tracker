@@ -96,9 +96,9 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
   try {
     await withTimeout((async () => {
       const [{ getTokenInfoImpl }, { analyzeTokenImpl }, { analyzeWhalePressureImpl }] = await Promise.all([
-        import("@/lib/token-info.functions"),
-        import("@/lib/token-analysis.functions"),
-        import("@/lib/whale-pressure.functions"),
+        import("@/lib/token-info.server"),
+        import("@/lib/token-analysis.server"),
+        import("@/lib/whale-pressure.server"),
       ]);
 
       const [info, sticky, whale] = await Promise.all([
