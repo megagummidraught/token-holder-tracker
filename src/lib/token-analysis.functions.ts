@@ -8,6 +8,26 @@ const WSOL = "So11111111111111111111111111111111111111112";
 const MIN_USD = 100;
 const MAX_PAGES = 15; // 100 tx/page => up to 1500 recent swaps
 const MAX_HOLDERS_TO_CHECK = 400;
+const FETCH_TIMEOUT_MS = 15_000;
+
+export interface AnalysisOptions {
+  maxPages?: number;
+  maxHoldersToCheck?: number;
+}
+
+async function fetchWithTimeout(
+  input: string | URL,
+  init: RequestInit = {},
+  timeoutMs = FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 const InputSchema = z.object({
   mint: z.string().trim().min(32).max(64),
@@ -39,7 +59,7 @@ interface HeliusTx {
 async function fetchJupPrices(mints: string[]): Promise<Record<string, number>> {
   const ids = Array.from(new Set(mints)).join(",");
   try {
-    const res = await fetch(`https://lite-api.jup.ag/price/v3?ids=${ids}`);
+    const res = await fetchWithTimeout(`https://lite-api.jup.ag/price/v3?ids=${ids}`);
     if (!res.ok) return {};
     const j = (await res.json()) as Record<string, { usdPrice?: number } | null>;
     const out: Record<string, number> = {};
@@ -64,7 +84,7 @@ async function fetchSwapPage(
   url.searchParams.set("type", "SWAP");
   url.searchParams.set("limit", "100");
   if (before) url.searchParams.set("before", before);
-  const res = await fetch(url.toString());
+  const res = await fetchWithTimeout(url);
   if (res.status === 404) {
     // Helius returns 404 when this window has no parsed events, often with a
     // hint to continue via before-signature. Follow it so paging continues.
@@ -85,7 +105,7 @@ async function getCurrentBalance(
   owner: string,
   mint: string,
 ): Promise<number> {
-  const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${apiKey}`, {
+  const res = await fetchWithTimeout(`https://mainnet.helius-rpc.com/?api-key=${apiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -130,7 +150,10 @@ export interface AnalysisResult {
   }>;
 }
 
-export async function analyzeTokenImpl(mint: string): Promise<AnalysisResult> {
+export async function analyzeTokenImpl(
+  mint: string,
+  options: AnalysisOptions = {},
+): Promise<AnalysisResult> {
     const apiKeyEnv = process.env.HELIUS_API_KEY;
     if (!apiKeyEnv) throw new Error("HELIUS_API_KEY not configured");
     const apiKey: string = apiKeyEnv;
@@ -152,7 +175,10 @@ export async function analyzeTokenImpl(mint: string): Promise<AnalysisResult> {
     let oldestTs: number | null = null;
     let reachedEnd = false;
 
-    for (let page = 0; page < MAX_PAGES; page++) {
+    const maxPages = options.maxPages ?? MAX_PAGES;
+    const maxHoldersToCheck = options.maxHoldersToCheck ?? MAX_HOLDERS_TO_CHECK;
+
+    for (let page = 0; page < maxPages; page++) {
       const { txs, nextBefore } = await fetchSwapPage(mint, apiKey, before);
       if (txs.length === 0 && !nextBefore) {
         reachedEnd = true;
@@ -173,7 +199,8 @@ export async function analyzeTokenImpl(mint: string): Promise<AnalysisResult> {
 
         if (sends.length > 0) {
           sends.sort((a, b) => b.tokenAmount - a.tokenAmount);
-          const seller = sends[0].fromUserAccount!;
+          const seller = sends[0].fromUserAccount;
+          if (!seller) continue;
           const usdSold = sends[0].tokenAmount * tokenPrice;
           const s = sellerSells.get(seller) ?? { usd: 0, count: 0 };
           s.usd += usdSold;
@@ -183,7 +210,8 @@ export async function analyzeTokenImpl(mint: string): Promise<AnalysisResult> {
 
         if (receives.length === 0) continue;
         receives.sort((a, b) => b.tokenAmount - a.tokenAmount);
-        const buyer = receives[0].toUserAccount!;
+        const buyer = receives[0].toUserAccount;
+        if (!buyer) continue;
 
         let usdPaid = 0;
         for (const n of tx.nativeTransfers ?? []) {
@@ -242,7 +270,7 @@ export async function analyzeTokenImpl(mint: string): Promise<AnalysisResult> {
 
     const uniqueBuyers = Array.from(
       new Set([...qual["1d"], ...qual["2d"], ...qual["7d"]]),
-    ).slice(0, MAX_HOLDERS_TO_CHECK);
+    ).slice(0, maxHoldersToCheck);
 
     const balanceUsd = new Map<string, number>();
     const CONCURRENCY = 8;
@@ -263,16 +291,21 @@ export async function analyzeTokenImpl(mint: string): Promise<AnalysisResult> {
 
     function build(bucket: Bucket) {
       const buyers = qual[bucket]
-        .map((addr) => ({
-          address: addr,
-          usdBought:
-            bucket === "1d"
-              ? buyerBuys.get(addr)!.u1
-              : bucket === "2d"
-                ? buyerBuys.get(addr)!.u2
-                : buyerBuys.get(addr)!.u7,
-          currentUsd: balanceUsd.get(addr) ?? 0,
-        }))
+        .map((addr) => {
+          const buyer = buyerBuys.get(addr);
+          if (!buyer) return null;
+          return {
+            address: addr,
+            usdBought:
+              bucket === "1d"
+                ? buyer.u1
+                : bucket === "2d"
+                  ? buyer.u2
+                  : buyer.u7,
+            currentUsd: balanceUsd.get(addr) ?? 0,
+          };
+        })
+        .filter((buyer): buyer is { address: string; usdBought: number; currentUsd: number } => buyer != null)
         .sort((a, b) => b.usdBought - a.usdBought);
       const stillHolding = buyers.filter((b) => b.currentUsd >= MIN_USD).length;
       return {

@@ -124,13 +124,21 @@ const SIG_LIMIT_PER_WALLET = 80;
 const TX_CONCURRENCY = 6;
 const WALLET_CONCURRENCY = 4;
 
+export interface WhalePressureOptions {
+  signatureLimitPerWallet?: number;
+  txConcurrency?: number;
+  walletConcurrency?: number;
+}
+
 async function scanWallet(
   key: string,
   wallet: string,
   mint: string,
   now: number,
+  signatureLimit: number,
+  txConcurrency: number,
 ): Promise<Array<{ delta: number; ts: number }>> {
-  const sigs = await getSignatures(key, wallet, SIG_LIMIT_PER_WALLET);
+  const sigs = await getSignatures(key, wallet, signatureLimit);
   const cutoff7d = now - WINDOWS["7d"];
   const inWindow = sigs.filter((s) => (s.blockTime ?? 0) >= cutoff7d);
   const flows: Array<{ delta: number; ts: number }> = [];
@@ -162,20 +170,25 @@ async function scanWallet(
       }
     }
   }
-  await Promise.all(Array.from({ length: TX_CONCURRENCY }, worker));
+  await Promise.all(Array.from({ length: txConcurrency }, worker));
   return flows;
 }
 
 export async function analyzeWhalePressureImpl(
   mint: string,
   topN: number,
+  options: WhalePressureOptions = {},
 ): Promise<WhalePressureResult> {
   const key = process.env.HELIUS_API_KEY;
   if (!key) throw new Error("HELIUS_API_KEY not configured");
+  const heliusKey = key;
+  const signatureLimit = options.signatureLimitPerWallet ?? SIG_LIMIT_PER_WALLET;
+  const txConcurrency = options.txConcurrency ?? TX_CONCURRENCY;
+  const walletConcurrency = options.walletConcurrency ?? WALLET_CONCURRENCY;
 
   const [supply, largest] = await Promise.all([
-    getTokenSupply(key, mint),
-    getLargestAccounts(key, mint),
+    getTokenSupply(heliusKey, mint),
+    getLargestAccounts(heliusKey, mint),
   ]);
   if (supply <= 0) throw new Error("Could not fetch token supply");
   if (largest.length === 0) throw new Error("No holder data returned");
@@ -185,7 +198,7 @@ export async function analyzeWhalePressureImpl(
 
   const owners = await Promise.all(
     largest.slice(0, topN).map(async (h) => {
-      const owner = await getOwner(key, h.address);
+      const owner = await getOwner(heliusKey, h.address);
       return owner ? { owner, balance: h.uiAmount, pct: (h.uiAmount / supply) * 100 } : null;
     }),
   );
@@ -217,13 +230,20 @@ export async function analyzeWhalePressureImpl(
       const i = widx++;
       const h = holders[i];
       try {
-        walletFlows[h.owner] = await scanWallet(key!, h.owner, mint, now);
+        walletFlows[h.owner] = await scanWallet(
+          heliusKey,
+          h.owner,
+          mint,
+          now,
+          signatureLimit,
+          txConcurrency,
+        );
       } catch {
         walletFlows[h.owner] = [];
       }
     }
   }
-  await Promise.all(Array.from({ length: WALLET_CONCURRENCY }, wworker));
+  await Promise.all(Array.from({ length: walletConcurrency }, wworker));
 
   const walletResults = holders.map((h) => {
     const flows = walletFlows[h.owner] ?? [];

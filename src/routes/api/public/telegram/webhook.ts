@@ -1,13 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createHash, timingSafeEqual } from "crypto";
 
-// The webhook handler is intentionally lightweight: it ACKs Telegram quickly,
-// then kicks off the scan in the background using the CF Workers waitUntil
-// via the request's exposed `event` (TanStack forwards CF ctx via env).
-// To keep things portable we just await inline but cap scan sizes; Telegram
-// allows up to 60s for webhook processing before retrying.
-
 const MINT_RE = /[1-9A-HJ-NP-Za-km-z]{32,44}/;
+const REPORT_TIMEOUT_MS = 50_000;
+const TOKEN_INFO_TIMEOUT_MS = 10_000;
+const STICKY_TIMEOUT_MS = 32_000;
+const WHALE_TIMEOUT_MS = 36_000;
+
+interface RouteContext {
+  executionCtx?: {
+    waitUntil?: (promise: Promise<unknown>) => void;
+  };
+}
 
 function deriveWebhookSecret(apiKey: string): string {
   return createHash("sha256").update(`telegram-webhook:${apiKey}`).digest("base64url");
@@ -28,7 +32,44 @@ interface TelegramUpdate {
   };
 }
 
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function scheduleTask(context: unknown, task: Promise<void>): void {
+  const routeContext = context as RouteContext | undefined;
+  const waitUntil = routeContext?.executionCtx?.waitUntil;
+  const guarded = task.catch((err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[telegram] background task failed: ${message}`);
+  });
+  if (typeof waitUntil === "function") {
+    waitUntil(guarded);
+    return;
+  }
+  void guarded;
+}
+
 async function handleUpdate(update: TelegramUpdate): Promise<void> {
+  const started = Date.now();
+  const updateId = update.update_id ?? "unknown";
   const msg = update.message;
   const chatId = msg?.chat?.id;
   const text = (msg?.text ?? "").trim();
@@ -49,25 +90,41 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
   }
   const mint = match[0];
 
+  console.log(`[telegram] scan start update=${updateId} mint=${mint}`);
   await tgSend(chatId, `🔍 Scanning <code>${mint}</code>…\nThis takes 30–90 seconds.`);
 
   try {
-    const [{ getTokenInfoImpl }, { analyzeTokenImpl }, { analyzeWhalePressureImpl }] = await Promise.all([
-      import("@/lib/token-info.functions"),
-      import("@/lib/token-analysis.functions"),
-      import("@/lib/whale-pressure.functions"),
-    ]);
+    await withTimeout((async () => {
+      const [{ getTokenInfoImpl }, { analyzeTokenImpl }, { analyzeWhalePressureImpl }] = await Promise.all([
+        import("@/lib/token-info.functions"),
+        import("@/lib/token-analysis.functions"),
+        import("@/lib/whale-pressure.functions"),
+      ]);
 
-    const [info, sticky, whale] = await Promise.all([
-      getTokenInfoImpl(mint),
-      analyzeTokenImpl(mint),
-      analyzeWhalePressureImpl(mint, 20),
-    ]);
+      const [info, sticky, whale] = await Promise.all([
+        withTimeout(getTokenInfoImpl(mint), TOKEN_INFO_TIMEOUT_MS, "Token info lookup"),
+        withTimeout(
+          analyzeTokenImpl(mint, { maxPages: 6, maxHoldersToCheck: 120 }),
+          STICKY_TIMEOUT_MS,
+          "Sticky-buyer scan",
+        ),
+        withTimeout(
+          analyzeWhalePressureImpl(mint, 20, {
+            signatureLimitPerWallet: 18,
+            txConcurrency: 4,
+            walletConcurrency: 5,
+          }),
+          WHALE_TIMEOUT_MS,
+          "Whale-pressure scan",
+        ),
+      ]);
 
-    await tgSend(chatId, formatReport(info, sticky, whale));
+      await tgSend(chatId, formatReport(info, sticky, whale));
+    })(), REPORT_TIMEOUT_MS, "Full report scan");
+    console.log(`[telegram] scan complete update=${updateId} mint=${mint} durationMs=${Date.now() - started}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("Scan failed:", message);
+    console.error(`[telegram] scan failed update=${updateId} mint=${mint}: ${message}`);
     await tgSend(chatId, formatError(message));
   }
 }
@@ -75,7 +132,7 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
 export const Route = createFileRoute("/api/public/telegram/webhook")({
   server: {
     handlers: {
-      POST: async ({ request }) => {
+      POST: async ({ request, context }) => {
         const tgKey = process.env.TELEGRAM_API_KEY;
         if (!tgKey) {
           return new Response("TELEGRAM_API_KEY missing", { status: 500 });
@@ -91,9 +148,9 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
         } catch {
           return new Response("Bad JSON", { status: 400 });
         }
-        // Process inline. Telegram allows ~60s; scans are tuned to fit.
-        await handleUpdate(update);
-        return Response.json({ ok: true });
+        console.log(`[telegram] update accepted update=${update.update_id ?? "unknown"}`);
+        scheduleTask(context, handleUpdate(update));
+        return Response.json({ ok: true, accepted: true });
       },
     },
   },
