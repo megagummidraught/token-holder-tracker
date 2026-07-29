@@ -261,6 +261,7 @@ export async function analyzeTokenImpl(
     while (idx < uniqueBuyers.length) {
       const i = idx++;
       const addr = uniqueBuyers[i];
+      if (!addr) continue;
       try {
         const bal = await getCurrentBalance(apiKey, addr, mint);
         balanceUsd.set(addr, bal * tokenPrice);

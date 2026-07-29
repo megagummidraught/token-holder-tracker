@@ -218,6 +218,7 @@ export async function analyzeWhalePressureImpl(
     while (widx < holders.length) {
       const i = widx++;
       const h = holders[i];
+      if (!h) continue;
       try {
         walletFlows[h.owner] = await scanWallet(
           heliusKey,
