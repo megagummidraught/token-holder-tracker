@@ -171,12 +171,13 @@ export async function analyzeWhalePressureImpl(
 ): Promise<WhalePressureResult> {
   const heliusKey = process.env.HELIUS_API_KEY;
   if (!heliusKey) throw new Error("HELIUS_API_KEY not configured");
+  const apiKey: string = heliusKey;
   const signatureLimit = options.signatureLimitPerWallet ?? SIG_LIMIT_PER_WALLET;
   const txConcurrency = options.txConcurrency ?? TX_CONCURRENCY;
   const walletConcurrency = options.walletConcurrency ?? WALLET_CONCURRENCY;
   const [supply, largest] = await Promise.all([
-    getTokenSupply(heliusKey, mint),
-    getLargestAccounts(heliusKey, mint),
+    getTokenSupply(apiKey, mint),
+    getLargestAccounts(apiKey, mint),
   ]);
   if (supply <= 0) throw new Error("Could not fetch token supply");
   if (largest.length === 0) throw new Error("No holder data returned");
@@ -185,7 +186,7 @@ export async function analyzeWhalePressureImpl(
   let skippedExchange = 0;
   const owners = await Promise.all(
     largest.slice(0, topN).map(async (h) => {
-      const owner = await getOwner(heliusKey, h.address);
+      const owner = await getOwner(apiKey, h.address);
       return owner ? { owner, balance: h.uiAmount, pct: (h.uiAmount / supply) * 100 } : null;
     }),
   );
@@ -221,7 +222,7 @@ export async function analyzeWhalePressureImpl(
       if (!h) continue;
       try {
         walletFlows[h.owner] = await scanWallet(
-          heliusKey,
+          apiKey,
           h.owner,
           mint,
           now,

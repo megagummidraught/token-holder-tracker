@@ -146,6 +146,7 @@ export async function analyzeTokenImpl(
 ): Promise<AnalysisResult> {
   const apiKey = process.env.HELIUS_API_KEY;
   if (!apiKey) throw new Error("HELIUS_API_KEY not configured");
+  const heliusKey: string = apiKey;
 
   const prices = await fetchJupPrices([mint, WSOL]);
   const tokenPrice = prices[mint] ?? 0;
@@ -165,7 +166,7 @@ export async function analyzeTokenImpl(
   const maxHoldersToCheck = options.maxHoldersToCheck ?? MAX_HOLDERS_TO_CHECK;
 
   for (let page = 0; page < maxPages; page++) {
-    const { txs, nextBefore } = await fetchSwapPage(mint, apiKey, before);
+    const { txs, nextBefore } = await fetchSwapPage(mint, heliusKey, before);
     if (txs.length === 0 && !nextBefore) {
       reachedEnd = true;
       break;
@@ -263,7 +264,7 @@ export async function analyzeTokenImpl(
       const addr = uniqueBuyers[i];
       if (!addr) continue;
       try {
-        const bal = await getCurrentBalance(apiKey, addr, mint);
+        const bal = await getCurrentBalance(heliusKey, addr, mint);
         balanceUsd.set(addr, bal * tokenPrice);
       } catch {
         balanceUsd.set(addr, 0);
