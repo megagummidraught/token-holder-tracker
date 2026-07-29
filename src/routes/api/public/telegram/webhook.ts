@@ -52,16 +52,16 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
   await tgSend(chatId, `🔍 Scanning <code>${mint}</code>…\nThis takes 30–90 seconds.`);
 
   try {
-    const [{ getTokenInfo }, { analyzeToken }, { analyzeWhalePressure }] = await Promise.all([
+    const [{ getTokenInfoImpl }, { analyzeTokenImpl }, { analyzeWhalePressureImpl }] = await Promise.all([
       import("@/lib/token-info.functions"),
       import("@/lib/token-analysis.functions"),
       import("@/lib/whale-pressure.functions"),
     ]);
 
     const [info, sticky, whale] = await Promise.all([
-      getTokenInfo({ data: { mint } }),
-      analyzeToken({ data: { mint } }),
-      analyzeWhalePressure({ data: { mint, topN: 20 } }),
+      getTokenInfoImpl(mint),
+      analyzeTokenImpl(mint),
+      analyzeWhalePressureImpl(mint, 20),
     ]);
 
     await tgSend(chatId, formatReport(info, sticky, whale));

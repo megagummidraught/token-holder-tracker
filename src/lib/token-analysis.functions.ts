@@ -130,14 +130,10 @@ export interface AnalysisResult {
   }>;
 }
 
-export const analyzeToken = createServerFn({ method: "POST" })
-  .inputValidator((input) => InputSchema.parse(input))
-  .handler(async ({ data }): Promise<AnalysisResult> => {
+export async function analyzeTokenImpl(mint: string): Promise<AnalysisResult> {
     const apiKeyEnv = process.env.HELIUS_API_KEY;
     if (!apiKeyEnv) throw new Error("HELIUS_API_KEY not configured");
     const apiKey: string = apiKeyEnv;
-    const mint = data.mint;
-
 
     const prices = await fetchJupPrices([mint, WSOL]);
     const tokenPrice = prices[mint] ?? 0;
@@ -148,10 +144,7 @@ export const analyzeToken = createServerFn({ method: "POST" })
     const now = Math.floor(Date.now() / 1000);
     const cutoff = now - WINDOWS["7d"];
 
-    // Accumulate first-buy events per (bucket, buyer): sum usd bought within window
-    // buyerBuys[address] = { firstTs, totalUsdIn7d, totalUsdIn2d, totalUsdIn1d }
     const buyerBuys = new Map<string, { u1: number; u2: number; u7: number }>();
-    // Track sells per address to detect LP / market-maker churn
     const sellerSells = new Map<string, { usd: number; count: number }>();
 
     let before: string | undefined;
@@ -175,9 +168,7 @@ export const analyzeToken = createServerFn({ method: "POST" })
         const mintTransfers = (tx.tokenTransfers ?? []).filter((t) => t.mint === mint && t.tokenAmount > 0);
         if (mintTransfers.length === 0) continue;
 
-        // Buyer = largest receiver of target mint
         const receives = mintTransfers.filter((t) => t.toUserAccount);
-        // Seller = largest sender of target mint
         const sends = mintTransfers.filter((t) => t.fromUserAccount);
 
         if (sends.length > 0) {
@@ -223,7 +214,6 @@ export const analyzeToken = createServerFn({ method: "POST" })
       }
     }
 
-    // LP / market-maker heuristic: sold 3+ times OR sold >= 50% of what they bought
     function isLpLike(addr: string): boolean {
       const s = sellerSells.get(addr);
       if (!s) return false;
@@ -231,7 +221,6 @@ export const analyzeToken = createServerFn({ method: "POST" })
       const bought = buyerBuys.get(addr);
       const boughtUsd = bought?.u7 ?? 0;
       if (boughtUsd > 0 && s.usd >= boughtUsd * 0.5) return true;
-      // Pure sellers with huge volume are almost certainly pools
       if (!bought && s.usd >= 10_000) return true;
       return false;
     }
@@ -297,9 +286,8 @@ export const analyzeToken = createServerFn({ method: "POST" })
     const b2 = build("2d");
     const b7 = build("7d");
 
-    // Grade = retention (holders / qualifying) weighted by log volume of holders
     const retention = b7.qualifyingBuyers > 0 ? b7.stillHolding / b7.qualifyingBuyers : 0;
-    const volScore = Math.min(1, Math.log10(1 + b7.stillHolding) / 2); // 100 holders => 1.0
+    const volScore = Math.min(1, Math.log10(1 + b7.stillHolding) / 2);
     const score = Math.round((retention * 0.65 + volScore * 0.35) * 100);
     let grade: Grade;
     if (score >= 85) grade = "A+";
@@ -323,4 +311,9 @@ export const analyzeToken = createServerFn({ method: "POST" })
       gradeReason,
       buckets: { "1d": b1, "2d": b2, "7d": b7 },
     };
-  });
+}
+
+export const analyzeToken = createServerFn({ method: "POST" })
+  .inputValidator((input) => InputSchema.parse(input))
+  .handler(async ({ data }) => analyzeTokenImpl(data.mint));
+
