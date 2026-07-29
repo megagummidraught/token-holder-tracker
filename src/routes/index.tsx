@@ -17,7 +17,7 @@ export const Route = createFileRoute("/")({
       {
         property: "og:description",
         content:
-          "Find sticky whales: buyers who spent $100+ on a Solana token and still hold $100+.",
+          "Analyze how many buyers of a Solana token spent over $100 in the last 1d/2d/7d and still hold over $100 today.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

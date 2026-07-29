@@ -77,14 +77,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "Solana Token Sticky Buyers" },
+      { name: "description", content: "Analyze how many buyers of a Solana token spent over $100 in the last 1d/2d/7d and still hold over $100 today." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "Solana Token Sticky Buyers" },
+      { property: "og:description", content: "Analyze how many buyers of a Solana token spent over $100 in the last 1d/2d/7d and still hold over $100 today." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Solana Token Sticky Buyers" },
+      { name: "twitter:description", content: "Analyze how many buyers of a Solana token spent over $100 in the last 1d/2d/7d and still hold over $100 today." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/448071b9-15fd-4ebc-b9a7-0f72c5515b72/id-preview-f22126be--17d24022-5e91-4646-be96-77eadab9c8f3.lovable.app-1785287473612.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/448071b9-15fd-4ebc-b9a7-0f72c5515b72/id-preview-f22126be--17d24022-5e91-4646-be96-77eadab9c8f3.lovable.app-1785287473612.png" },
     ],
     links: [
       {
