@@ -4,8 +4,24 @@ import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
 type ServerEntry = {
-  fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
+  fetch: (
+    request: Request,
+    opts?: { context?: { executionCtx?: ExecutionContextLike } },
+  ) => Promise<Response> | Response;
 };
+
+type ExecutionContextLike = {
+  waitUntil: (promise: Promise<unknown>) => void;
+};
+
+function hasWaitUntil(value: unknown): value is ExecutionContextLike {
+  return (
+    value != null &&
+    typeof value === "object" &&
+    "waitUntil" in value &&
+    typeof (value as { waitUntil?: unknown }).waitUntil === "function"
+  );
+}
 
 let serverEntryPromise: Promise<ServerEntry> | undefined;
 
@@ -48,7 +64,9 @@ export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
+      const response = await handler.fetch(request, {
+        context: { executionCtx: hasWaitUntil(ctx) ? ctx : undefined },
+      });
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);

@@ -1,28 +1,54 @@
 import type { AnalysisResult } from "@/lib/token-analysis.functions";
-import type { WhalePressureResult, WhaleBucket } from "@/lib/whale-pressure.functions";
+import type { WhalePressureResult, WhaleBucket } from "@/lib/whale-pressure.server";
 import type { TokenInfo } from "@/lib/token-info.functions";
 
 const GATEWAY = "https://connector-gateway.lovable.dev/telegram";
+const TELEGRAM_SEND_TIMEOUT_MS = 12_000;
+
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 export async function tgSend(chatId: number, text: string, extra?: Record<string, unknown>) {
   const lovableKey = process.env.LOVABLE_API_KEY;
   const tgKey = process.env.TELEGRAM_API_KEY;
   if (!lovableKey || !tgKey) throw new Error("Telegram env vars missing");
-  const res = await fetch(`${GATEWAY}/sendMessage`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${lovableKey}`,
-      "X-Connection-Api-Key": tgKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: "HTML",
-      disable_web_page_preview: true,
-      ...extra,
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(
+      `${GATEWAY}/sendMessage`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${lovableKey}`,
+          "X-Connection-Api-Key": tgKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+          ...extra,
+        }),
+      },
+      TELEGRAM_SEND_TIMEOUT_MS,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Telegram sendMessage timed out/failed: ${message}`);
+    throw err;
+  }
   if (!res.ok) {
     const body = await res.text();
     console.error(`Telegram sendMessage failed [${res.status}]: ${body}`);
