@@ -3,6 +3,10 @@ import { useServerFn } from "@tanstack/react-start";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { analyzeToken, type AnalysisResult } from "@/lib/token-analysis.functions";
+import {
+  analyzeWhalePressure,
+  type WhalePressureResult,
+} from "@/lib/whale-pressure.functions";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -51,11 +55,16 @@ function gradeColor(g: string) {
 function Index() {
   const [mint, setMint] = useState("");
   const analyze = useServerFn(analyzeToken);
+  const whaleFn = useServerFn(analyzeWhalePressure);
   const mutation = useMutation({
     mutationFn: (m: string) => analyze({ data: { mint: m } }),
   });
+  const whaleMutation = useMutation({
+    mutationFn: (m: string) => whaleFn({ data: { mint: m, topN: 20 } }),
+  });
 
   const result = mutation.data as AnalysisResult | undefined;
+  const whale = whaleMutation.data as WhalePressureResult | undefined;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -88,7 +97,10 @@ function Index() {
           onSubmit={(e) => {
             e.preventDefault();
             const v = mint.trim();
-            if (v) mutation.mutate(v);
+            if (v) {
+              mutation.mutate(v);
+              whaleMutation.mutate(v);
+            }
           }}
         >
           <input
@@ -171,7 +183,113 @@ function Index() {
             ))}
           </div>
         )}
+
+        {whaleMutation.isPending && (
+          <p className="mt-6 text-sm text-muted-foreground">
+            Scanning top-20 holder wallets for whale pressure…
+          </p>
+        )}
+
+        {whaleMutation.isError && (
+          <div className="mt-6 rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+            Whale pressure: {(whaleMutation.error as Error).message}
+          </div>
+        )}
+
+        {whale && <WhaleSection whale={whale} />}
       </div>
+    </div>
+  );
+}
+
+function WhaleSection({ whale }: { whale: WhalePressureResult }) {
+  const top = [...whale.wallets]
+    .sort(
+      (a, b) => Math.abs(b.perWindow["7d"].net) - Math.abs(a.perWindow["7d"].net),
+    )
+    .slice(0, 10);
+  return (
+    <div className="mt-8 space-y-4">
+      <div className="rounded-md border border-border bg-card p-4 text-card-foreground">
+        <div className="text-sm font-semibold">🐳 Whale Pressure</div>
+        <div className="mt-1 text-xs text-muted-foreground">
+          Scanned {whale.scannedWallets} top wallets
+          {whale.skippedExchange > 0
+            ? ` (skipped ${whale.skippedExchange} CEX)`
+            : ""}
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          {(["1d", "2d", "7d"] as const).map((w) => {
+            const win = whale.windows[w];
+            return (
+              <div key={w} className="rounded-md border border-border p-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Last {w}
+                </div>
+                <div className="mt-1 text-2xl font-bold">
+                  {win.aggregateScore >= 0 ? "+" : ""}
+                  {win.aggregateScore.toFixed(1)}
+                </div>
+                <div className="mt-1 text-xs">{win.label}</div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  🟢 {win.buying} · 🔴 {win.selling} · ⚪ {win.neutral}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {top.length > 0 && (
+        <div className="rounded-md border border-border bg-card">
+          <div className="border-b border-border px-4 py-2 text-sm font-semibold">
+            Top movers (7d net tokens)
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Wallet</th>
+                  <th className="px-4 py-2 font-medium">% supply</th>
+                  <th className="px-4 py-2 font-medium">7d net</th>
+                  <th className="px-4 py-2 font-medium">7d score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {top.map((w) => {
+                  const pw = w.perWindow["7d"];
+                  return (
+                    <tr key={w.address} className="border-t border-border">
+                      <td className="px-4 py-2 font-mono">
+                        <a
+                          href={`https://solscan.io/account/${w.address}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="hover:underline"
+                        >
+                          {shortAddr(w.address)}
+                        </a>
+                      </td>
+                      <td className="px-4 py-2">{w.pctSupply.toFixed(2)}%</td>
+                      <td
+                        className={
+                          pw.net >= 0
+                            ? "px-4 py-2 text-emerald-500"
+                            : "px-4 py-2 text-destructive"
+                        }
+                      >
+                        {pw.net >= 0 ? "+" : ""}
+                        {pw.net.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2">{pw.score.toFixed(1)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

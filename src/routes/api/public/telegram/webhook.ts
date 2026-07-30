@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { createHash, timingSafeEqual } from "crypto";
 
 const MINT_RE = /[1-9A-HJ-NP-Za-km-z]{32,44}/;
+const seenUpdates = new Set<number>();
 const REPORT_TIMEOUT_MS = 50_000;
 const TOKEN_INFO_TIMEOUT_MS = 10_000;
 const STICKY_TIMEOUT_MS = 32_000;
@@ -53,18 +54,23 @@ async function withTimeout<T>(
   }
 }
 
-function scheduleTask(context: unknown, task: Promise<void>): void {
+async function scheduleTask(context: unknown, task: Promise<void>): Promise<void> {
   const routeContext = context as RouteContext | undefined;
-  const waitUntil = routeContext?.executionCtx?.waitUntil;
+  const executionCtx = routeContext?.executionCtx;
+  const waitUntil = executionCtx?.waitUntil;
   const guarded = task.catch((err) => {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[telegram] background task failed: ${message}`);
   });
   if (typeof waitUntil === "function") {
-    waitUntil(guarded);
+    console.log("[telegram] running scan via waitUntil");
+    waitUntil.call(executionCtx, guarded);
     return;
   }
-  void guarded;
+  // No background primitive available in this runtime: run inline so the work
+  // is not dropped when the response is returned.
+  console.log("[telegram] no waitUntil available, running scan inline");
+  await guarded;
 }
 
 async function handleUpdate(update: TelegramUpdate): Promise<void> {
@@ -148,8 +154,20 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
         } catch {
           return new Response("Bad JSON", { status: 400 });
         }
-        console.log(`[telegram] update accepted update=${update.update_id ?? "unknown"}`);
-        scheduleTask(context, handleUpdate(update));
+        const updateId = update.update_id;
+        if (typeof updateId === "number") {
+          if (seenUpdates.has(updateId)) {
+            console.log(`[telegram] duplicate update ignored update=${updateId}`);
+            return Response.json({ ok: true, duplicate: true });
+          }
+          seenUpdates.add(updateId);
+          if (seenUpdates.size > 500) {
+            const oldest = seenUpdates.values().next().value;
+            if (oldest !== undefined) seenUpdates.delete(oldest);
+          }
+        }
+        console.log(`[telegram] update accepted update=${updateId ?? "unknown"}`);
+        await scheduleTask(context, handleUpdate(update));
         return Response.json({ ok: true, accepted: true });
       },
     },
