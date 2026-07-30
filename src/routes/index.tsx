@@ -187,6 +187,8 @@ function Index() {
           </button>
         </form>
 
+        <RecentAlerts />
+
         {mutation.isPending && (
           <p className="mt-6 text-sm text-muted-foreground">
             Fetching swap history (this can take 30–90s for busy tokens)…
