@@ -53,18 +53,23 @@ async function withTimeout<T>(
   }
 }
 
-function scheduleTask(context: unknown, task: Promise<void>): void {
+async function scheduleTask(context: unknown, task: Promise<void>): Promise<void> {
   const routeContext = context as RouteContext | undefined;
-  const waitUntil = routeContext?.executionCtx?.waitUntil;
+  const executionCtx = routeContext?.executionCtx;
+  const waitUntil = executionCtx?.waitUntil;
   const guarded = task.catch((err) => {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[telegram] background task failed: ${message}`);
   });
   if (typeof waitUntil === "function") {
-    waitUntil(guarded);
+    console.log("[telegram] running scan via waitUntil");
+    waitUntil.call(executionCtx, guarded);
     return;
   }
-  void guarded;
+  // No background primitive available in this runtime: run inline so the work
+  // is not dropped when the response is returned.
+  console.log("[telegram] no waitUntil available, running scan inline");
+  await guarded;
 }
 
 async function handleUpdate(update: TelegramUpdate): Promise<void> {
