@@ -89,6 +89,23 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
     return;
   }
 
+  if (text === "/alerts_on" || text === "/alerts on") {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await supabaseAdmin.from("scanner_subscribers").upsert({ chat_id: chatId, enabled: true });
+    await tgSend(
+      chatId,
+      "✅ Alerts <b>on</b>. I'll scan top-volume Solana tokens every 15 minutes and message you when one grades <b>A</b> or <b>A+</b> for sticky buyers.",
+    );
+    return;
+  }
+
+  if (text === "/alerts_off" || text === "/alerts off") {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await supabaseAdmin.from("scanner_subscribers").upsert({ chat_id: chatId, enabled: false });
+    await tgSend(chatId, "🔕 Alerts <b>off</b>.");
+    return;
+  }
+
   const match = text.match(MINT_RE);
   if (!match) {
     await tgSend(chatId, formatHelp());
