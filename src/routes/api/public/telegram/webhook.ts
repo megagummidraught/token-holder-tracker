@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { createHash, timingSafeEqual } from "crypto";
 
 const MINT_RE = /[1-9A-HJ-NP-Za-km-z]{32,44}/;
+const seenUpdates = new Set<number>();
 const REPORT_TIMEOUT_MS = 50_000;
 const TOKEN_INFO_TIMEOUT_MS = 10_000;
 const STICKY_TIMEOUT_MS = 32_000;
