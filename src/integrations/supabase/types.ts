@@ -14,7 +14,96 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      scanner_alerts: {
+        Row: {
+          created_at: string
+          grade: string
+          id: string
+          liquidity_usd: number | null
+          mint: string
+          name: string | null
+          price_usd: number | null
+          score: number
+          symbol: string | null
+          volume_24h_usd: number | null
+        }
+        Insert: {
+          created_at?: string
+          grade: string
+          id?: string
+          liquidity_usd?: number | null
+          mint: string
+          name?: string | null
+          price_usd?: number | null
+          score: number
+          symbol?: string | null
+          volume_24h_usd?: number | null
+        }
+        Update: {
+          created_at?: string
+          grade?: string
+          id?: string
+          liquidity_usd?: number | null
+          mint?: string
+          name?: string | null
+          price_usd?: number | null
+          score?: number
+          symbol?: string | null
+          volume_24h_usd?: number | null
+        }
+        Relationships: []
+      }
+      scanner_subscribers: {
+        Row: {
+          chat_id: number
+          created_at: string
+          enabled: boolean
+        }
+        Insert: {
+          chat_id: number
+          created_at?: string
+          enabled?: boolean
+        }
+        Update: {
+          chat_id?: number
+          created_at?: string
+          enabled?: boolean
+        }
+        Relationships: []
+      }
+      scanner_tokens: {
+        Row: {
+          created_at: string
+          last_alerted_at: string | null
+          last_grade: string | null
+          last_scanned_at: string | null
+          last_score: number | null
+          mint: string
+          name: string | null
+          symbol: string | null
+        }
+        Insert: {
+          created_at?: string
+          last_alerted_at?: string | null
+          last_grade?: string | null
+          last_scanned_at?: string | null
+          last_score?: number | null
+          mint: string
+          name?: string | null
+          symbol?: string | null
+        }
+        Update: {
+          created_at?: string
+          last_alerted_at?: string | null
+          last_grade?: string | null
+          last_scanned_at?: string | null
+          last_score?: number | null
+          mint?: string
+          name?: string | null
+          symbol?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
