@@ -50,6 +50,74 @@ function gradeColor(g: string) {
   return "bg-destructive/20 text-destructive";
 }
 
+interface ScannerAlert {
+  id: string;
+  mint: string;
+  symbol: string | null;
+  name: string | null;
+  grade: string;
+  score: number;
+  liquidity_usd: number | null;
+  volume_24h_usd: number | null;
+  created_at: string;
+}
+
+function RecentAlerts() {
+  const { data } = useQuery({
+    queryKey: ["scanner-alerts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("scanner_alerts")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return (data ?? []) as ScannerAlert[];
+    },
+    refetchInterval: 60_000,
+  });
+
+  return (
+    <section className="mt-10 rounded-lg border border-border p-4">
+      <h2 className="text-lg font-semibold">Auto-scanner alerts</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Top-volume Solana tokens are scanned every 15 minutes; an A or A+ sticky-buyer
+        grade fires a Telegram alert. Send <code>/alerts_on</code> to the bot to subscribe.
+      </p>
+      {!data?.length ? (
+        <p className="mt-4 text-sm text-muted-foreground">No alerts yet.</p>
+      ) : (
+        <ul className="mt-4 space-y-2">
+          {data.map((a) => (
+            <li
+              key={a.id}
+              className="flex items-center justify-between gap-3 rounded-md bg-muted/40 px-3 py-2 text-sm"
+            >
+              <div className="min-w-0">
+                <a
+                  className="font-medium text-primary hover:underline"
+                  href={`https://dexscreener.com/solana/${a.mint}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {a.symbol ? `$${a.symbol}` : shortAddr(a.mint)}
+                </a>
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {new Date(a.created_at).toLocaleString()}
+                </span>
+              </div>
+              <span
+                className={`rounded px-2 py-0.5 text-xs font-semibold ${gradeColor(a.grade)}`}
+              >
+                {a.grade} · {a.score}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
 
 
 function Index() {
