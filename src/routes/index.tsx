@@ -183,6 +183,20 @@ function Index() {
             ))}
           </div>
         )}
+
+        {whaleMutation.isPending && (
+          <p className="mt-6 text-sm text-muted-foreground">
+            Scanning top-20 holder wallets for whale pressure…
+          </p>
+        )}
+
+        {whaleMutation.isError && (
+          <div className="mt-6 rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+            Whale pressure: {(whaleMutation.error as Error).message}
+          </div>
+        )}
+
+        {whale && <WhaleSection whale={whale} />}
       </div>
     </div>
   );
