@@ -1,6 +1,7 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { useState } from "react";
 import { analyzeToken, type AnalysisResult } from "@/lib/token-analysis.functions";
 import {
