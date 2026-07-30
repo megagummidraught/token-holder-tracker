@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicTelegramWebhookRouteImport } from './routes/api/public/telegram/webhook'
+import { Route as ApiPublicScannerRunRouteImport } from './routes/api/public/scanner/run'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -23,30 +24,43 @@ const ApiPublicTelegramWebhookRoute =
     path: '/api/public/telegram/webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicScannerRunRoute = ApiPublicScannerRunRouteImport.update({
+  id: '/api/public/scanner/run',
+  path: '/api/public/scanner/run',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/public/scanner/run': typeof ApiPublicScannerRunRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/public/scanner/run': typeof ApiPublicScannerRunRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/public/scanner/run': typeof ApiPublicScannerRunRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/public/telegram/webhook'
+  fullPaths: '/' | '/api/public/scanner/run' | '/api/public/telegram/webhook'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/public/telegram/webhook'
-  id: '__root__' | '/' | '/api/public/telegram/webhook'
+  to: '/' | '/api/public/scanner/run' | '/api/public/telegram/webhook'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/public/scanner/run'
+    | '/api/public/telegram/webhook'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiPublicScannerRunRoute: typeof ApiPublicScannerRunRoute
   ApiPublicTelegramWebhookRoute: typeof ApiPublicTelegramWebhookRoute
 }
 
@@ -66,11 +80,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicTelegramWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/scanner/run': {
+      id: '/api/public/scanner/run'
+      path: '/api/public/scanner/run'
+      fullPath: '/api/public/scanner/run'
+      preLoaderRoute: typeof ApiPublicScannerRunRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiPublicScannerRunRoute: ApiPublicScannerRunRoute,
   ApiPublicTelegramWebhookRoute: ApiPublicTelegramWebhookRoute,
 }
 export const routeTree = rootRouteImport
