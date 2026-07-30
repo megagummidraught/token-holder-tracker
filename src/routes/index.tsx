@@ -97,7 +97,10 @@ function Index() {
           onSubmit={(e) => {
             e.preventDefault();
             const v = mint.trim();
-            if (v) mutation.mutate(v);
+            if (v) {
+              mutation.mutate(v);
+              whaleMutation.mutate(v);
+            }
           }}
         >
           <input
