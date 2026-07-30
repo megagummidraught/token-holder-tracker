@@ -154,7 +154,7 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
           return new Response("Bad JSON", { status: 400 });
         }
         console.log(`[telegram] update accepted update=${update.update_id ?? "unknown"}`);
-        scheduleTask(context, handleUpdate(update));
+        await scheduleTask(context, handleUpdate(update));
         return Response.json({ ok: true, accepted: true });
       },
     },
