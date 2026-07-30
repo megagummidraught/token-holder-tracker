@@ -55,11 +55,16 @@ function gradeColor(g: string) {
 function Index() {
   const [mint, setMint] = useState("");
   const analyze = useServerFn(analyzeToken);
+  const whaleFn = useServerFn(analyzeWhalePressure);
   const mutation = useMutation({
     mutationFn: (m: string) => analyze({ data: { mint: m } }),
   });
+  const whaleMutation = useMutation({
+    mutationFn: (m: string) => whaleFn({ data: { mint: m, topN: 20 } }),
+  });
 
   const result = mutation.data as AnalysisResult | undefined;
+  const whale = whaleMutation.data as WhalePressureResult | undefined;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
