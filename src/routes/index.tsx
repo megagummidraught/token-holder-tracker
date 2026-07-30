@@ -3,6 +3,10 @@ import { useServerFn } from "@tanstack/react-start";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { analyzeToken, type AnalysisResult } from "@/lib/token-analysis.functions";
+import {
+  analyzeWhalePressure,
+  type WhalePressureResult,
+} from "@/lib/whale-pressure.functions";
 
 export const Route = createFileRoute("/")({
   head: () => ({
