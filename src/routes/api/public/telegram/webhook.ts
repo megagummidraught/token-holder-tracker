@@ -153,7 +153,19 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
         } catch {
           return new Response("Bad JSON", { status: 400 });
         }
-        console.log(`[telegram] update accepted update=${update.update_id ?? "unknown"}`);
+        const updateId = update.update_id;
+        if (typeof updateId === "number") {
+          if (seenUpdates.has(updateId)) {
+            console.log(`[telegram] duplicate update ignored update=${updateId}`);
+            return Response.json({ ok: true, duplicate: true });
+          }
+          seenUpdates.add(updateId);
+          if (seenUpdates.size > 500) {
+            const oldest = seenUpdates.values().next().value;
+            if (oldest !== undefined) seenUpdates.delete(oldest);
+          }
+        }
+        console.log(`[telegram] update accepted update=${updateId ?? "unknown"}`);
         await scheduleTask(context, handleUpdate(update));
         return Response.json({ ok: true, accepted: true });
       },
