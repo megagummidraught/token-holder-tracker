@@ -11,8 +11,8 @@ const STABLES = new Set([
 ]);
 
 const ALERT_GRADES = new Set<Grade>(["A", "A+"]);
-const MIN_LIQUIDITY_USD = 50_000;
-const MIN_VOLUME_24H_USD = 300_000;
+const MIN_LIQUIDITY_USD = 30_000;
+const MIN_VOLUME_24H_USD = 100_000;
 const RESCAN_AFTER_MS = 6 * 60 * 60 * 1000;
 const REALERT_AFTER_MS = 24 * 60 * 60 * 1000;
 const MAX_SCANS_PER_RUN = 3;
