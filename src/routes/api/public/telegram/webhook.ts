@@ -124,10 +124,14 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
         import("@/lib/whale-pressure.server"),
       ]);
 
-      const [info, sticky, whale] = await Promise.all([
+      const [infoRes, stickyRes, whaleRes] = await Promise.allSettled([
         withTimeout(getTokenInfoImpl(mint), TOKEN_INFO_TIMEOUT_MS, "Token info lookup"),
         withTimeout(
-          analyzeTokenImpl(mint, { maxPages: 6, maxHoldersToCheck: 120 }),
+          analyzeTokenImpl(mint, {
+            maxPages: 6,
+            maxHoldersToCheck: 120,
+            deadlineMs: STICKY_TIMEOUT_MS - 4_000,
+          }),
           STICKY_TIMEOUT_MS,
           "Sticky-buyer scan",
         ),
@@ -142,7 +146,15 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
         ),
       ]);
 
-      await tgSend(chatId, formatReport(info, sticky, whale));
+      if (infoRes.status === "rejected") throw infoRes.reason;
+      const sticky = stickyRes.status === "fulfilled" ? stickyRes.value : null;
+      const whale = whaleRes.status === "fulfilled" ? whaleRes.value : null;
+      if (!sticky) console.error(`[telegram] sticky failed mint=${mint}: ${String(stickyRes.status === "rejected" ? stickyRes.reason : "")}`);
+      if (!whale) console.error(`[telegram] whale failed mint=${mint}: ${String(whaleRes.status === "rejected" ? whaleRes.reason : "")}`);
+      if (!sticky && !whale) throw new Error("Both scans timed out — try again in a moment.");
+
+      await tgSend(chatId, formatReport(infoRes.value, sticky, whale));
+
     })(), REPORT_TIMEOUT_MS, "Full report scan");
     console.log(`[telegram] scan complete update=${updateId} mint=${mint} durationMs=${Date.now() - started}`);
   } catch (err) {
