@@ -44,8 +44,6 @@ export async function getTokenInfoImpl(mint: string): Promise<TokenInfo> {
         liquidityUsd: null,
         volume24hUsd: null,
         priceChange24h: null,
-      priceChange1h: null,
-      pairCreatedAt: null,
         priceChange1h: null,
         pairCreatedAt: null,
         dexscreenerUrl: dexUrl,
