@@ -88,8 +88,8 @@ function esc(s: string): string {
 
 export function formatReport(
   info: TokenInfo,
-  sticky: AnalysisResult,
-  whale: WhalePressureResult,
+  sticky: AnalysisResult | null,
+  whale: WhalePressureResult | null,
 ): string {
   const nameLine = info.name
     ? `<b>${esc(info.name)}</b>${info.symbol ? ` <i>($${esc(info.symbol)})</i>` : ""}`
@@ -107,6 +107,11 @@ export function formatReport(
   lines.push("");
 
   // Sticky buyers
+  if (!sticky) {
+    lines.push(`━━━ 🎯 <b>Sticky Buyers</b> ━━━`);
+    lines.push(`<i>⚠️ Timed out — history too deep to scan right now.</i>`);
+    lines.push("");
+  } else {
   lines.push(`━━━ 🎯 <b>Sticky Buyers</b> ━━━`);
   lines.push(`Grade: <b>${sticky.grade}</b> (${sticky.gradeScore}/100)`);
   lines.push(`<i>${esc(sticky.gradeReason)}</i>`);
@@ -121,9 +126,14 @@ export function formatReport(
     lines.push(`<i>⚠️ Hit pagination cap; older 7d buyers may be missing.</i>`);
   }
   lines.push("");
+  }
 
   // Whale pressure
   lines.push(`━━━ 🐳 <b>Whale Pressure</b> ━━━`);
+  if (!whale) {
+    lines.push(`<i>⚠️ Timed out — could not scan top holders in time.</i>`);
+    return lines.join("\n");
+  }
   lines.push(
     `Scanned ${whale.scannedWallets} top wallets` +
       (whale.skippedExchange > 0 ? ` (skipped ${whale.skippedExchange} CEX)` : ""),
