@@ -71,6 +71,17 @@ function fmtPct(n: number | null): string {
   return `${s}${n.toFixed(2)}%`;
 }
 
+function fmtAge(ms: number | null): string {
+  if (ms == null) return "n/a";
+  const mins = Math.max(0, Math.floor((Date.now() - ms) / 60000));
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 48) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  if (days < 60) return `${days}d`;
+  return `${Math.floor(days / 30)}mo`;
+}
+
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -92,6 +103,7 @@ export function formatReport(
   lines.push(`💵 Price: ${fmtUsd(info.priceUsd)}  (${fmtPct(info.priceChange24h)} 24h)`);
   lines.push(`📊 MCap: ${fmtUsd(info.marketCapUsd)}   💧 Liq: ${fmtUsd(info.liquidityUsd)}`);
   lines.push(`🔄 24h Vol: ${fmtUsd(info.volume24hUsd)}`);
+  lines.push(`⏱ 1h: ${fmtPct(info.priceChange1h)}   🚀 Age: ${fmtAge(info.pairCreatedAt)}`);
   lines.push("");
 
   // Sticky buyers

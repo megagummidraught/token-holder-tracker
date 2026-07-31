@@ -7,6 +7,8 @@ export interface TokenInfo {
   liquidityUsd: number | null;
   volume24hUsd: number | null;
   priceChange24h: number | null;
+  priceChange1h: number | null;
+  pairCreatedAt: number | null;
   dexscreenerUrl: string;
   pairAddress: string | null;
 }
@@ -18,7 +20,8 @@ interface DsPair {
   priceUsd?: string;
   liquidity?: { usd?: number };
   volume?: { h24?: number };
-  priceChange?: { h24?: number };
+  priceChange?: { h1?: number; h24?: number };
+  pairCreatedAt?: number;
   fdv?: number;
   marketCap?: number;
   url?: string;
@@ -41,6 +44,8 @@ export async function getTokenInfoImpl(mint: string): Promise<TokenInfo> {
         liquidityUsd: null,
         volume24hUsd: null,
         priceChange24h: null,
+        priceChange1h: null,
+        pairCreatedAt: null,
         dexscreenerUrl: dexUrl,
         pairAddress: null,
       };
@@ -56,6 +61,8 @@ export async function getTokenInfoImpl(mint: string): Promise<TokenInfo> {
       liquidityUsd: top.liquidity?.usd ?? null,
       volume24hUsd: top.volume?.h24 ?? null,
       priceChange24h: top.priceChange?.h24 ?? null,
+      priceChange1h: top.priceChange?.h1 ?? null,
+      pairCreatedAt: top.pairCreatedAt ?? null,
       dexscreenerUrl: top.url ?? dexUrl,
       pairAddress: top.pairAddress,
     };
@@ -69,6 +76,8 @@ export async function getTokenInfoImpl(mint: string): Promise<TokenInfo> {
       liquidityUsd: null,
       volume24hUsd: null,
       priceChange24h: null,
+      priceChange1h: null,
+      pairCreatedAt: null,
       dexscreenerUrl: dexUrl,
       pairAddress: null,
     };

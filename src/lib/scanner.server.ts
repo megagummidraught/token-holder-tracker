@@ -26,6 +26,8 @@ export interface Candidate {
   priceUsd: number | null;
   liquidityUsd: number | null;
   volume24hUsd: number | null;
+  priceChange1h: number | null;
+  pairCreatedAt: number | null;
 }
 
 async function fetchJson<T>(url: string): Promise<T | null> {
@@ -48,6 +50,8 @@ interface DexPair {
   priceUsd?: string;
   liquidity?: { usd?: number };
   volume?: { h24?: number };
+  priceChange?: { h1?: number };
+  pairCreatedAt?: number;
 }
 
 interface BoostEntry {
@@ -96,6 +100,8 @@ export async function fetchCandidates(): Promise<Candidate[]> {
         priceUsd: p.priceUsd ? Number(p.priceUsd) : null,
         liquidityUsd: liq,
         volume24hUsd: vol,
+        priceChange1h: p.priceChange?.h1 ?? null,
+        pairCreatedAt: p.pairCreatedAt ?? null,
       });
     }
   }
@@ -127,6 +133,22 @@ function fmtUsd(n: number | null | undefined): string {
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
   if (n >= 1) return `$${n.toFixed(2)}`;
   return `$${n.toPrecision(4)}`;
+}
+
+function fmtPct(n: number | null | undefined): string {
+  if (n == null) return "n/a";
+  return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
+}
+
+function fmtAge(ms: number | null | undefined): string {
+  if (ms == null) return "n/a";
+  const mins = Math.max(0, Math.floor((Date.now() - ms) / 60000));
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 48) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  if (days < 60) return `${days}d`;
+  return `${Math.floor(days / 30)}mo`;
 }
 
 function esc(s: string): string {
@@ -228,6 +250,7 @@ export async function runScannerPass(): Promise<ScanRunResult> {
         `• 7d: ${b7.stillHolding}/${b7.qualifyingBuyers} still hold $100+`,
         "",
         `💵 ${fmtUsd(c.priceUsd)}  💧 Liq ${fmtUsd(c.liquidityUsd)}  🔄 24h ${fmtUsd(c.volume24hUsd)}`,
+        `⏱ 1h ${fmtPct(c.priceChange1h ?? info?.priceChange1h)}  🚀 Age ${fmtAge(c.pairCreatedAt ?? info?.pairCreatedAt)}`,
       ].join("\n");
 
       for (const chatId of chatIds) {
