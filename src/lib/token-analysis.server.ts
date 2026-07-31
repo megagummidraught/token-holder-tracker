@@ -10,6 +10,8 @@ const FETCH_TIMEOUT_MS = 15_000;
 export interface AnalysisOptions {
   maxPages?: number;
   maxHoldersToCheck?: number;
+  /** Soft time budget: stop paging/checking balances once exceeded and return partial data. */
+  deadlineMs?: number;
 }
 
 async function fetchWithTimeout(
@@ -164,8 +166,11 @@ export async function analyzeTokenImpl(
   let reachedEnd = false;
   const maxPages = options.maxPages ?? MAX_PAGES;
   const maxHoldersToCheck = options.maxHoldersToCheck ?? MAX_HOLDERS_TO_CHECK;
+  const deadline = options.deadlineMs ? Date.now() + options.deadlineMs : null;
+  const outOfTime = () => deadline != null && Date.now() > deadline;
 
   for (let page = 0; page < maxPages; page++) {
+    if (outOfTime()) break;
     const { txs, nextBefore } = await fetchSwapPage(mint, heliusKey, before);
     if (txs.length === 0 && !nextBefore) {
       reachedEnd = true;
@@ -263,6 +268,10 @@ export async function analyzeTokenImpl(
       const i = idx++;
       const addr = uniqueBuyers[i];
       if (!addr) continue;
+      if (outOfTime()) {
+        balanceUsd.set(addr, 0);
+        continue;
+      }
       try {
         const bal = await getCurrentBalance(heliusKey, addr, mint);
         balanceUsd.set(addr, bal * tokenPrice);
@@ -271,7 +280,7 @@ export async function analyzeTokenImpl(
       }
     }
   }
-  await Promise.all(Array.from({ length: 8 }, worker));
+  await Promise.all(Array.from({ length: 12 }, worker));
 
   function build(bucket: Bucket) {
     const buyers = qual[bucket]
