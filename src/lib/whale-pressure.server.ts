@@ -13,16 +13,26 @@ const EXCHANGE_WALLETS = new Set<string>([
 interface LargestAccount { address: string; uiAmount: number }
 
 const RPC = (key: string) => `https://mainnet.helius-rpc.com/?api-key=${key}`;
+const RPC_TIMEOUT_MS = 7_000;
 
 async function rpc<T>(key: string, method: string, params: unknown[]): Promise<T | null> {
-  const res = await fetch(RPC(key), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  if (!res.ok) return null;
-  const j = (await res.json()) as { result?: T };
-  return j.result ?? null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), RPC_TIMEOUT_MS);
+  try {
+    const res = await fetch(RPC(key), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { result?: T };
+    return j.result ?? null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function getTokenSupply(key: string, mint: string): Promise<number> {
@@ -119,6 +129,8 @@ export interface WhalePressureOptions {
   signatureLimitPerWallet?: number;
   txConcurrency?: number;
   walletConcurrency?: number;
+  /** Soft budget: stop starting wallet/transaction work once exceeded and return partial data. */
+  deadlineMs?: number;
 }
 
 async function scanWallet(
@@ -128,6 +140,7 @@ async function scanWallet(
   now: number,
   signatureLimit: number,
   txConcurrency: number,
+  deadline: number | null,
 ): Promise<Array<{ delta: number; ts: number }>> {
   const sigs = await getSignatures(key, wallet, signatureLimit);
   const cutoff7d = now - WINDOWS["7d"];
@@ -136,6 +149,7 @@ async function scanWallet(
   let idx = 0;
   async function worker() {
     while (idx < inWindow.length) {
+      if (deadline != null && Date.now() >= deadline) break;
       const i = idx++;
       const s = inWindow[i];
       const tx = await getTx(key, s.signature);
@@ -175,6 +189,7 @@ export async function analyzeWhalePressureImpl(
   const signatureLimit = options.signatureLimitPerWallet ?? SIG_LIMIT_PER_WALLET;
   const txConcurrency = options.txConcurrency ?? TX_CONCURRENCY;
   const walletConcurrency = options.walletConcurrency ?? WALLET_CONCURRENCY;
+  const deadline = options.deadlineMs ? Date.now() + options.deadlineMs : null;
   const [supply, largest] = await Promise.all([
     getTokenSupply(apiKey, mint),
     getLargestAccounts(apiKey, mint),
@@ -217,6 +232,7 @@ export async function analyzeWhalePressureImpl(
   let widx = 0;
   async function wworker() {
     while (widx < holders.length) {
+      if (deadline != null && Date.now() >= deadline) break;
       const i = widx++;
       const h = holders[i];
       if (!h) continue;
@@ -228,6 +244,7 @@ export async function analyzeWhalePressureImpl(
           now,
           signatureLimit,
           txConcurrency,
+          deadline,
         );
       } catch {
         walletFlows[h.owner] = [];

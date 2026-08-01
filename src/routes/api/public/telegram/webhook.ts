@@ -3,10 +3,10 @@ import { createHash, timingSafeEqual } from "crypto";
 
 const MINT_RE = /[1-9A-HJ-NP-Za-km-z]{32,44}/;
 const seenUpdates = new Set<number>();
-const REPORT_TIMEOUT_MS = 50_000;
+const REPORT_TIMEOUT_MS = 42_000;
 const TOKEN_INFO_TIMEOUT_MS = 10_000;
-const STICKY_TIMEOUT_MS = 32_000;
-const WHALE_TIMEOUT_MS = 36_000;
+const STICKY_TIMEOUT_MS = 28_000;
+const WHALE_TIMEOUT_MS = 30_000;
 
 interface RouteContext {
   executionCtx?: {
@@ -128,18 +128,19 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
         withTimeout(getTokenInfoImpl(mint), TOKEN_INFO_TIMEOUT_MS, "Token info lookup"),
         withTimeout(
           analyzeTokenImpl(mint, {
-            maxPages: 6,
-            maxHoldersToCheck: 120,
-            deadlineMs: STICKY_TIMEOUT_MS - 4_000,
+            maxPages: 3,
+            maxHoldersToCheck: 48,
+            deadlineMs: STICKY_TIMEOUT_MS - 8_000,
           }),
           STICKY_TIMEOUT_MS,
           "Sticky-buyer scan",
         ),
         withTimeout(
-          analyzeWhalePressureImpl(mint, 20, {
-            signatureLimitPerWallet: 18,
+          analyzeWhalePressureImpl(mint, 12, {
+            signatureLimitPerWallet: 8,
             txConcurrency: 4,
-            walletConcurrency: 5,
+            walletConcurrency: 4,
+            deadlineMs: WHALE_TIMEOUT_MS - 8_000,
           }),
           WHALE_TIMEOUT_MS,
           "Whale-pressure scan",
@@ -151,7 +152,9 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
       const whale = whaleRes.status === "fulfilled" ? whaleRes.value : null;
       if (!sticky) console.error(`[telegram] sticky failed mint=${mint}: ${String(stickyRes.status === "rejected" ? stickyRes.reason : "")}`);
       if (!whale) console.error(`[telegram] whale failed mint=${mint}: ${String(whaleRes.status === "rejected" ? whaleRes.reason : "")}`);
-      if (!sticky && !whale) throw new Error("Both scans timed out — try again in a moment.");
+      if (!sticky && !whale) {
+        console.error(`[telegram] both analysis sections unavailable mint=${mint}; sending token-info report`);
+      }
 
       await tgSend(chatId, formatReport(infoRes.value, sticky, whale));
 
